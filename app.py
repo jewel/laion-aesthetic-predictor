@@ -6,6 +6,7 @@ import torch.nn as nn
 import clip
 from PIL import Image, ImageFile
 import gradio as gr
+import pprint
 
 # if you changed the MLP architecture during training, change it also here:
 class MLP(pl.LightningModule):
@@ -80,6 +81,13 @@ def load_models():
 
     return model_dict
 
+def extract(text):
+    text_input = clip.tokenize([text]).to(model_dict['device'])
+    with torch.no_grad():
+        text_features = model_dict['clip_model'].encode_text(text_input)
+    return {'embedding': text_features.numpy()[0].tolist()}
+
+
 def predict(image):
     image_input = model_dict['clip_preprocess'](image).unsqueeze(0).to(model_dict['device'])
     with torch.no_grad():
@@ -94,7 +102,7 @@ def predict(image):
         prediction = model_dict['classifier'](im_emb)
     score = prediction.item()
 
-    return {'aesthetic score': score}
+    return {'score': score, 'embedding': image_features.numpy()[0].tolist()}
 
 if __name__ == '__main__':
     print('\tinit models')
@@ -124,10 +132,11 @@ if __name__ == '__main__':
         gr.Markdown(description)
         with gr.Row():
             with gr.Column():
-                image_input = gr.Image(type='pil', label='Input image')
+                image_input = gr.Image(type='pil', label='Input image', optional=True)
                 submit_button = gr.Button('Submit')
             json_output = gr.JSON(label='Output')
-        submit_button.click(predict, inputs=image_input, outputs=json_output)
+        submit_button.click(predict, inputs=image_input, outputs=json_output, api_name="predict")
         gr.Examples(examples=examples, inputs=image_input)
-        gr.HTML(article)
-    demo.launch()
+        text_input = gr.Text(label='Or Input Text', optional=True)
+        submit_button.click(extract, inputs=text_input, outputs=json_output, api_name="extract")
+    demo.launch(server_name="0.0.0.0")
